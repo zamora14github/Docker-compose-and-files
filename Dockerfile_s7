@@ -1,0 +1,5 @@
+FROM java:8-jre
+COPY producer_s7-1.0-SNAPSHOT-jar-with-dependencies.jar /apps/deploy/
+EXPOSE 8099
+WORKDIR /apps/deploy/
+CMD ["java", "-Xms128m", "-Xmx1500m",  "-Dfile.encoding=UTF-8", "-jar", "producer_s7-1.0-SNAPSHOT-jar-with-dependencies.jar"]

@@ -1,0 +1,437 @@
+version: '2'
+services:
+  plc4x1:
+    build: 
+      context: .
+      dockerfile: Dockerfile_s7
+    image: plc4x/s7
+    ports:
+      - "8099:8099"
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+    container_name: myplc4x_s7
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.11
+  plc4x2:
+    build: 
+      context: .
+      dockerfile: Dockerfile_modbus
+    image: plc4x/modbus
+    ports:
+      - "8199:8099"
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+    container_name: myplc4x_modbus
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.12      
+  mysql:
+    build:
+      context: .
+      dockerfile: DockerfileMysql
+    image: mysql/5.7:plc4x
+    container_name: mymysql
+    stop_grace_period: 10s
+    ports:
+     - 3306:3306
+    environment:
+     - MYSQL_ROOT_PASSWORD=david
+     - MYSQL_USER=david
+     - MYSQL_PASSWORD=david
+    volumes:
+     - "mysqlData:/var/lib/mysql"
+    networks: 
+      processing_net:
+        ipv4_address: 10.0.0.2      
+  zoo1:
+    image: zookeeper
+    restart: always
+    container_name: myzookeeper1
+    hostname: zoo1
+    ports:
+      - 2181:2181
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181 server.2=10.0.1.13:2888:3888;2181 server.3=10.0.1.14:2888:3888;2181
+      #ZOO_INIT_LIMIT: 20
+    volumes:
+          - "zookeeperData1:/data" 
+          - "zookeeperDataLogs1:/datalog" 
+          - "zookeeperLogs1:/logs"
+    networks: 
+      control_net:
+        ipv4_address: 10.0.1.12
+  zoo2:
+    image: zookeeper
+    restart: always
+    container_name: myzookeeper2
+    hostname: zoo2
+    ports:
+      - 2182:2181 
+    depends_on:
+      - zoo1
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=10.0.1.12:2888:3888;2181 server.2=0.0.0.0:2888:3888;2181 server.3=10.0.1.14:2888:3888;2181
+      #ZOO_INIT_LIMIT: 20
+    volumes: 
+          - "zookeeperData2:/data" 
+          - "zookeeperDataLogs2:/datalog" 
+          - "zookeeperLogs2:/logs"
+    networks: 
+      control_net:
+        ipv4_address: 10.0.1.13       
+  zoo3:
+    image: zookeeper
+    restart: always
+    container_name: myzookeeper3
+    hostname: zoo3
+    ports:
+      - 2183:2181
+    depends_on:
+      - zoo2  
+    environment:
+      ZOO_MY_ID: 3
+      ZOO_SERVERS: server.1=10.0.1.12:2888:3888;2181 server.2=10.0.1.13:2888:3888;2181 server.3=0.0.0.0:2888:3888;2181
+      #ZOO_INIT_LIMIT: 20
+    volumes:
+          - "zookeeperData3:/data" 
+          - "zookeeperDataLogs3:/datalog"
+          - "zookeeperLogs3:/logs"
+    networks: 
+      control_net:
+        ipv4_address: 10.0.1.14      
+  kafka1:
+    image: debezium/kafka:0.8
+    container_name: mykafka1
+    stop_grace_period: 10s
+    ports:
+     - 9092:9092
+    depends_on:
+     - zoo1
+    environment:
+     - HOST_NAME=10.0.0.3
+     - ADVERTISED_HOST_NAME=10.0.0.3
+     - ZOOKEEPER_CONNECT=10.0.1.12:2181,10.0.1.13:2182,10.0.1.14:2183
+     - BROKER_ID=1
+     - KAFKA_LOG_RETENTION_MS=-1
+     - KAFKA_RETENTION_MS=-1
+     - KAFKA_RETENTION_BYTES=-1
+     - KAFKA_DEFAULT_REPLICATION_FACTOR=3
+     - KAFKA_REPLICATION_FACTOR=3
+     #- KAFKA_CREATE_TOPICS="test-topic:1:3"
+     - AUTO.OFFSET.RESET="latest"
+    restart: on-failure  
+    volumes:
+          - "kafkaData:/kafka/data"
+          - "kafkaLogs:/kafka/logs"
+          - "kafkaConfig:/kafka/config"
+    networks: 
+      control_net:
+        ipv4_address: 10.0.1.3
+      processing_net: 
+        ipv4_address: 10.0.0.3
+  kafka2:
+    image: debezium/kafka:0.8
+    container_name: mykafka2
+    stop_grace_period: 10s
+    ports:
+     - 9093:9093
+    depends_on:
+     - kafka1
+    environment:
+     - HOST_NAME=10.0.0.7
+     - ADVERTISED_HOST_NAME=10.0.0.7
+     - ZOOKEEPER_CONNECT=10.0.1.12:2181,10.0.1.13:2182,10.0.1.14:2183
+     - BROKER_ID=2
+     - KAFKA_LOG_RETENTION_MS=-1
+     - KAFKA_RETENTION_MS=-1
+     - KAFKA_RETENTION_BYTES=-1
+     - KAFKA_DEFAULT_REPLICATION_FACTOR=3
+     - KAFKA_REPLICATION_FACTOR=3
+     - AUTO.OFFSET.RESET="latest"
+    restart: on-failure 
+    volumes:
+          - "kafkaData:/kafka/data"
+          - "kafkaLogs:/kafka/logs"
+          - "kafkaConfig:/kafka/config"
+    networks: 
+      control_net:
+        ipv4_address: 10.0.1.7
+      processing_net: 
+        ipv4_address: 10.0.0.7
+  kafka3:
+    image: debezium/kafka:0.8
+    container_name: mykafka3
+    stop_grace_period: 10s
+    ports:
+     - 9094:9094
+    depends_on:
+     - kafka1
+    environment:
+     - HOST_NAME=10.0.0.8
+     - ADVERTISED_HOST_NAME=10.0.0.8
+     - ZOOKEEPER_CONNECT=10.0.1.12:2181,10.0.1.13:2182,10.0.1.14:2183
+     - BROKER_ID=3
+     - KAFKA_LOG_RETENTION_MS=-1
+     - KAFKA_RETENTION_MS=-1
+     - KAFKA_RETENTION_BYTES=-1
+     - KAFKA_DEFAULT_REPLICATION_FACTOR=3
+     - KAFKA_REPLICATION_FACTOR=3
+     - AUTO.OFFSET.RESET="latest"
+    restart: on-failure 
+    volumes:
+          - "kafkaData:/kafka/data"
+          - "kafkaLogs:/kafka/logs"
+          - "kafkaConfig:/kafka/config"
+    networks: 
+      control_net:
+        ipv4_address: 10.0.1.8
+      processing_net: 
+        ipv4_address: 10.0.0.8 
+  spark1:
+    image: p7hb/docker-spark
+    hostname: spark
+    container_name: myspark1
+    command: start-master.sh
+    ports:
+      - "4040:4040"
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+          - ./build:/build
+    working_dir: /build
+    depends_on:
+      - kafka1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_MASTER_HOST=10.0.0.5
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.5 
+      control_net:
+        ipv4_address: 10.0.1.17
+  spark2:
+    image: p7hb/docker-spark
+    hostname: spark2
+    container_name: myspark2
+    command: start-slave.sh spark://10.0.0.5:7077
+    ports:
+      - "4041:4041"
+      - "8088:8088"
+      - "8089:8089"
+    volumes:
+          - ./build:/build
+    working_dir: /build
+    depends_on:
+      - spark1
+      - kafka1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.9
+      control_net:
+        ipv4_address: 10.0.1.18
+  spark3:
+    image: p7hb/docker-spark
+    hostname: spark3
+    container_name: myspark3
+    command: start-slave.sh spark://10.0.0.5:7077
+    ports:
+      - "4042:4042"
+      - "8090:8090"
+      - "8091:8091"
+    volumes:
+          - ./build:/build
+    working_dir: /build
+    depends_on:
+      - spark1
+      - kafka1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.10
+      control_net:
+        ipv4_address: 10.0.1.19 
+  sparkAlarmer1:
+    image: p7hb/docker-spark
+    hostname: spark
+    container_name: mysparkAlarmer1
+    command: start-master.sh
+    ports:
+      - "4140:4040"
+      - "8180:8080"
+      - "8181:8081"
+    volumes:
+          - ./buildAlarmer:/build
+    working_dir: /build
+    depends_on:
+      - kafka1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_MASTER_HOST=10.0.0.18 
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.18 
+      control_net:
+        ipv4_address: 10.0.1.9
+  sparkAlarmer2:
+    image: p7hb/docker-spark
+    hostname: spark2
+    container_name: mysparkAlarmer2
+    command: start-slave.sh spark://10.0.0.18:7077
+    ports:
+      - "4141:4041"
+      - "8188:8088"
+      - "8189:8089"
+    volumes:
+          - ./buildAlarmer:/build
+    working_dir: /build
+    depends_on:
+      - sparkAlarmer1
+      - kafka1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.19
+      control_net:
+        ipv4_address: 10.0.1.10
+  sparkAlarmer3:
+    image: p7hb/docker-spark
+    hostname: spark3
+    container_name: mysparkAlarmer3
+    command: start-slave.sh spark://10.0.0.18:7077
+    ports:
+      - "4142:4042"
+      - "8190:8090"
+      - "8191:8091"
+    volumes:
+          - ./buildAlarmer:/build
+    working_dir: /build
+    depends_on:
+      - sparkAlarmer1
+      - kafka1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    networks: 
+      processing_net: 
+        ipv4_address: 10.0.0.20
+      control_net:
+        ipv4_address: 10.0.1.11   
+
+  # namenode:
+  #   image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+  #   container_name: namenode
+  #   hostname: namenode
+  #   restart: always
+  #   ports:
+  #     - 9870:9870
+  #     - 9000:9000
+  #   volumes:
+  #     - hadoop_namenode:/hadoop/dfs/name
+  #   environment:
+  #     - CLUSTER_NAME=test
+  #   env_file:
+  #     - ./hadoop.env
+  #   networks: 
+  #     control_net:
+  #       ipv4_address: 10.0.1.20
+  # datanode:
+  #   image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+  #   container_name: datanode
+  #   hostname: datanode
+  #   restart: always
+  #   ports:
+  #     - 9864:9864
+  #   volumes:
+  #     - hadoop_datanode:/hadoop/dfs/data
+  #   environment:
+  #     SERVICE_PRECONDITION: "namenode:9870"
+  #   env_file:
+  #     - ./hadoop.env
+  #   networks: 
+  #     control_net:
+  #       ipv4_address: 10.0.1.21
+  # resourcemanager:
+  #   image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+  #   container_name: resourcemanager
+  #   hostname: resourcemanager
+  #   restart: always
+  #   ports:
+  #     - 8088:8088
+  #   environment:
+  #     SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+  #   env_file:
+  #     - ./hadoop.env
+  #   networks: 
+  #     control_net:
+  #       ipv4_address: 10.0.1.22
+  # nodemanager1:
+  #   image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+  #   container_name: nodemanager
+  #   hostname: nodemanager
+  #   restart: always
+  #   ports:
+  #     - 8042:8042
+  #   environment:
+  #     SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+  #   env_file:
+  #     - ./hadoop.env
+  #   networks: 
+  #     control_net:
+  #       ipv4_address: 10.0.1.23
+  # historyserver:
+  #   image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+  #   container_name: historyserver
+  #   hostname: historyserver
+  #   restart: always
+  #   environment:
+  #     SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+  #   volumes:
+  #     - hadoop_historyserver:/hadoop/yarn/timeline
+  #   env_file:
+  #     - ./hadoop.env
+  #   networks: 
+  #     control_net:
+  #       ipv4_address: 10.0.1.24        
+volumes: 
+  mysqlData:
+  kafkaData:
+  kafkaLogs:
+  kafkaConfig:
+  zookeeperEnsemble:  
+  zookeeperData1:
+  zookeeperData2:
+  zookeeperData3:  
+  zookeeperDataLogs1: 
+  zookeeperDataLogs2:
+  zookeeperDataLogs3:  
+  zookeeperLogs1:
+  zookeeperLogs2:
+  zookeeperLogs3:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:   
+networks:
+  control_net:
+    driver: bridge
+    ipam: 
+      driver: default
+      config:
+        - subnet: 10.0.1.0/24
+          gateway: 10.0.1.1
+  processing_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
